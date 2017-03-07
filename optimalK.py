@@ -157,6 +157,11 @@ def optimalK(X):
         gs[indk],sk[indk] = gap_statistic(k)
 
     return min([k for k in range(1,len(ks)-1) if gs[k]-(gs[k+1]-sk[k+1]) >= 0])
-
+if sys.argv[1]:
+    df = sys.argv[1]
+else:
+    df = raw_input("Input file path: ")
+    
+data = np.load(df)
 print("Finding optimal k...")
 print optimalK(data)
