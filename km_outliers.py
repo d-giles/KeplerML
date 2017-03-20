@@ -13,6 +13,7 @@ from multiprocessing import Pool,cpu_count
 import sys
 from datetime import datetime
 from numbapro import cuda
+from sklearn.cluster import KMeans
 
 @cuda.autojit
 def cu_worker(x1, x2, mu, bmk):
@@ -162,7 +163,7 @@ def optimalK(X):
 K-means Clustering
 """
 
-def outliers(data,clusters,centers,files):
+def outliers(data,centers):
     """
     Args:
     data - all the data
@@ -183,30 +184,23 @@ def outliers(data,clusters,centers,files):
     
     dataByCluster = []
     clusterIndices = []
-    clusters = np.array(clusters)
-    
-    for i in range(min(clusters),max(clusters)+1):
-        # Keeping track of which points get pulled into each cluster:
-        clusterIndices.append([j[0] for j in enumerate(clusters) if j[1]==i])
-        
-        # Separating the cluster data out into their own arrays (w/in the cluster array)
-        dataByCluster.append([data[j[1]] for j in enumerate(clusterIndices[i])])
             
     allTypical=[]
     allOutliers=[]
-
+    clusters = np.array(data['cluster'])
     for i in range(nclusters):
+
+        """
+            ==== Calculating distances to each point ====
+        Calculate distances for each point to the center of its cluster
+        """
+        distFromCenter=[sum((data.loc[pt][data.columns[:-1]]-centers[i])**2)**.5 for pt in data[data.cluster==i].index]
+        
         """
         ========== Finding points outside of the cutoff ===========
         """
-        sigma = np.std(dataByCluster[i])
-        cutoff = 2*sigma
-        """
-            ==== Calculating distances to each point ====
-        """
-        # Calculate distances to each point in each cluster to the center of its cluster
-        distFromCenter=[sum((pt-centers[i])**2)**.5 for pt in dataByCluster[i]]
-        
+        sigma = np.std(distFromCenter)
+        cutoff = 2*sigma        
         """
             ==== Finding outliers and the standard (defined by the closest to the center) ====
         """
@@ -226,29 +220,27 @@ def outliers(data,clusters,centers,files):
 
 def kmeans_w_outliers(files,data,nclusters=1):
     # nclusters can be obtained through the optimalK.py script 
-    
+    # making a copy of the data dataframe
+    X=data
     # Run KMeans, get clusters
     est = KMeans(n_clusters=nclusters)
-    est.fit(data)
+    est.fit(X)
     clusters = est.labels_
+    X['cluster']=clusters
     centers = est.cluster_centers_
     
-    clusters,centers=KMeans_clusters(data,nclusters)
-        
-    clusterLabels=outliers(data,clusters,centers,files)
-    clusterLabels = np.array(clusterLabels)
+    X['clusters']=outliers(X,centers)
     
-    data['cluster']=clusterLabels
-    numout = data[data.cluster==-1].cluster.count()
-    if data.index.str.contains('8462852').any():
-        if data['cluster'].loc[data.index.str.contains('8462852')] == -1:
+    numout = X[X.cluster==-1].cluster.count()
+    if X.index.str.contains('8462852').any():
+        if data['cluster'].loc[X.index.str.contains('8462852')] == -1:
             print("Tabby has been found to be an outlier in k-means.")
         else:
             print("Tabby has NOT been found to be an outlier in k-means")
 
     print("There were %s outliers in %s clusters"%(numout,nclusters))
     
-    return clusterLabels
+    return X['clusters']
 
 if __name__=="__main__":
     """
