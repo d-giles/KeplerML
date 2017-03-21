@@ -9,24 +9,27 @@ import fnmatch
 
 def eps_est(data):
     # distance array containing all distances
-    nbrs = NearestNeighbors(n_neighbors=1000, algorithm='ball_tree').fit(data)
+    nbrs = NearestNeighbors(n_neighbors=np.ceil(.2*len(data)), algorithm='ball_tree').fit(data)
     distances, indices = nbrs.kneighbors(data)
     # Distance to 200th nearest neighbor, using 200th instead of 4th because: ... reasons
-    distArr = distances[:,100]
+    distArr = distances[:,np.ceil(.02*len(data))]
     distArr.sort()
     pts = range(len(distArr))
 
     # The following looks for the first instance (past the mid point) where the mean of the following 50 points
     # is at least 5% greater than the mean of the previous 50 points.
     # Alternatively, perhaps a better method, we could consider the variance of the points and draw conclusions from that
-    number = 50
+    if len(data) <= 200:
+        number = 10
+    else:
+        number = 50
     cutoff = 1.05
     for i in range(number,len(pts)-number):
         if np.mean(distArr[i+1:i+number])>=cutoff*np.mean(distArr[i-number:i-1]) and i>(len(pts)%2+len(pts))/2:
 
             dbEps = distArr[i]
             break
-        
+
     # Estimating nneighbors by finding the number of pts. 
     # that fall w/in our determined eps for each point.
 
@@ -45,40 +48,27 @@ def eps_est(data):
     """%(dbEps,average,neighbors))
     return dbEps,neighbors
 
-def dbscan_w_outliers(files,data):
+def dbscan_w_outliers(data):
+    X=np.array([np.array(data.loc[i]) for i in data.index])
     print("Clustering data...")
-    dbEps,neighbors= eps_est(data)
+    dbEps,neighbors= eps_est(X)
     
     print("Clustering data with DBSCAN...")
-    npdata = np.array(data)
-    
-
     est = DBSCAN(eps=dbEps,min_samples=neighbors)
-    
-    est.fit(npdata)
+    est.fit(X)
     clusterLabels = est.labels_
-    coreSampleIndices = est.core_sample_indices_
-    
-    print("Sorting...")
-    centerIndex=coreSampleIndices[0]
-    outlierIndices = [i for i in range(len(clusterLabels))if clusterLabels[i]==-1]
-    
-    outlierFiles = [files[i] for i in outlierIndices]
-    numout = len(outlierFiles)
+
+    numout = len(clusterLabels[clusterLabels==-1])
     numclusters = max(clusterLabels+1)
-    tabbyInd = files.index(fnmatch.filter(files,'*8462852*')[0])
-    if fnmatch.filter(files,'*8462852*')[0] in outlierFiles:
-        print("Tabby has been found to be an outlier in DBSCAN.")
-    else:
-        print("Tabby has not been found to be an outlier in DBSCAN")
+    if data.index.str.contains('8462852').any():
+        tabbyInd = list(data.index).index('8462852')
+        if clusterLabels[tabbyInd] == -1:
+            print("Tabby has been found to be an outlier in DBSCAN.")
+        else:
+            print("Tabby has not Not found to be an outlier in DBSCAN")
         
     print("There were %s clusters and %s total outliers"%(numclusters,numout))
-    
-    plotArray = [files,clusterLabels,data]
-    print("Sorting...")
-    centerIndex=coreSampleIndices[0]
-    outlierfiles = [files[i[0]] for i in enumerate(clusterLabels) if i[1]==-1]
-    
+
     return clusterLabels
 
 if __name__=="__main__":

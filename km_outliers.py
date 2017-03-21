@@ -163,7 +163,7 @@ def optimalK(X):
 K-means Clustering
 """
 
-def outliers(data,centers):
+def outliers(data,clusterLabels,centers):
     """
     Args:
     data - all the data
@@ -187,15 +187,15 @@ def outliers(data,centers):
             
     allTypical=[]
     allOutliers=[]
-    clusters = np.array(data['cluster'])
+    clusters = np.array(clusterLabels)
     for i in range(nclusters):
 
         """
             ==== Calculating distances to each point ====
         Calculate distances for each point to the center of its cluster
         """
-        distFromCenter=[sum((data.loc[pt][data.columns[:-1]]-centers[i])**2)**.5 for pt in data[data.cluster==i].index]
-        
+        distFromCenter = [sum((data[pt]-centers[i])**2)**.5 for pt in clusterLabels[clusterLabels==i]]
+
         """
         ========== Finding points outside of the cutoff ===========
         """
@@ -221,26 +221,27 @@ def outliers(data,centers):
 def kmeans_w_outliers(files,data,nclusters=1):
     # nclusters can be obtained through the optimalK.py script 
     # making a copy of the data dataframe
-    X=data
+    X=np.array([np.array(data.loc[i]) for i in data.index])
     # Run KMeans, get clusters
     est = KMeans(n_clusters=nclusters)
     est.fit(X)
     clusters = est.labels_
-    X['cluster']=clusters
+    clusterLabels=clusters
     centers = est.cluster_centers_
     
-    X['clusters']=outliers(X,centers)
-    
-    numout = X[X.cluster==-1].cluster.count()
-    if X.index.str.contains('8462852').any():
-        if data['cluster'].loc[X.index.str.contains('8462852')] == -1:
+    clusterLabels=outliers(X,clusterLabels,centers)
+    clusterLabels = np.array(clusterLabels)
+    numout = len(clusterLabels[clusterLabels==-1])
+    if data.index.str.contains('8462852').any():
+        tabbyInd = list(data.index).index('8462852')
+        if clusterLabels[tabbyInd] == -1:
             print("Tabby has been found to be an outlier in k-means.")
         else:
             print("Tabby has NOT been found to be an outlier in k-means")
 
     print("There were %s outliers in %s clusters"%(numout,nclusters))
     
-    return X['clusters']
+    return clusterLabels
 
 if __name__=="__main__":
     """
