@@ -1,168 +1,120 @@
-#Author: Lucianne Walkowicz, from code written by Revant Nayar
-#This file contains a list of the features calculated in the order in which they appear in the output file "allparameters.txt". 
+#Author: Lucianne Walkowicz and Daniel Giles, from code written by Revant Nayar
 #Code snippets are shown currently, with the intent of turning these into written descriptions of each feature. 
-#Code snippets are not intended to work out of the box and are shown for illustration purposes only. 
+#Code snippets are not intended to work out of the box and are shown for illustration purposes only, though should be useable with minor modificaiton.
 
-1. Revantese to English translations
+numpdc - this is the PDC_SAP_FLUX array cleaned of NaNs. Being replaced by 'f' to simplify this document.
 
-numpdc - this is the PDC_SAP_FLUX array cleaned of NaNs. By analogy, numtime and numerr are the time and error arrays of same, also cleaned of NaNs
+corrpdc - this is the trend corrected PDC_SAP_FLUX, it removes the longterm linear trend of a given lightcurve.
+    5/31/18 (Daniel):   This is utilized for some features, but not for others. As of this note, a normalized flux is used which                               divides the lightcurve by the median flux value for most feature derivations.
 
-the index "i" refers to the index in the entire array of lightcurve files, i.e. "i" goes from 0 to 160000+. I have taken i out whereever it occurs as the calculations for an individual lightcurve are now within a loop that loops over i, rather than every single calculation looping over i (facepalm).
+The index 'i' refers to an indidual lightcurve, 'j' refers to a single observation within a lightcurve.
 
-longtermtrend and yoffset - he did a linear fit to the entire lightcurve to capture overall slope, if any-- longtermtrend is the slope of this linear fit, yoffset is the intercept
-
-corrpdc - this is some crazy ass version of normalizing the lightcurve, where hesubtracted off the linear trend computed above from the entire lightcurve. In the rewrite I normalized the flux by the median to begin with, so I've used "nf" (the normalize flux in place of both numpdc and corrpdc. Hopefully that will be ok.  
 
 Features:
 
-1  longtermtrend
-2  meanmedrat
-3  skews
-4  varss 
-5  coeffvar 
-6  stds 
-7  numoutliers 
-8  numnegoutliers 
-9  numposoutliers 
-10 numout1s 
-11 kurt 
-12 mad 
-13 maxslope 
-14 minslope 
-15 meanpslope 
-16 meannslope 
-17 g_asymm
-18 rough_g_asymm 
-19 diff_asymm 
-20 skewslope 
-21 varabsslope 
-22 varslope 
-23 meanabsslope 
-24 absmeansecder 
-25 num_pspikes
-26 num_nspikes 
-27 num_sdspikes # now called "num_psdspikes"
-28 num_sdspikes2 #now called "num_nsdspikes"
-29 stdratio 
-30 pstrend 
-31 num_zcross 
-32 num_pm 
-33 len_nmax 
-34 len_nmin 
-35 mautocorrcoef 
-36 ptpslopes 
-37 periodicity 
-38 periodicityr 
-39 naiveperiod 
-40 maxvars 
-41 maxvarsr 
-42 oeratio 
-43 amp_2
-44 normamp
-45 mbp 
-46 mid20 
-47 mid35 
-48 mid50 
-49 mid65 
-50 mid80 
-51 percentamp 
-52 magratio
-53 sautocorrcoef 
-54 autocorrcoef 
-55 flatmean 
-56 tflatmean 
-57 roundmean 
-58 troundmean 
-59 roundrat 
-60 flatrat
+1  longtermtrend - Linear fit coeffecient, does the object get brighter or dimmer on average over time?
+2  meanmedrat - ratio between the mean and the median, mean/median
+3  skews - The skew of the distribution of fluxes, positive value indicates flux is skewed to values greater than the median value. A normal distribution has a skew of zero.
+4  varss - variance of the flux
+5  coeffvar - coeffecient of variability, the ratio of the standard deviation to the mean of the flux
+6  stds - standard deviation of the flux
+7  numout1s - number of flux values outside of 1-sigma deviation
+8  numnegoutliers - number of fluxes values 4-sigma less than the mean
+9  numposoutliers - number of flux values 4-sigma greater than the mean
+10 numoutliers - total number of flux values 4-sigma away from the mean
+11 kurt - kurtosis, a measure of the sharpness of the peak of the distribution of fluxes. 1/N*sum((nf-nf_mean)^4)/stds^4
+12 mad - Median Absolute Difference, the median difference from the median flux
+13 maxslope - the greatest positive slope between two points, dnf/dt. Uses the 99th percentile rather than the actual largest.
+14 minslope - the most negative slope btw two points.
+15 meanpslope - the mean of postive slopes
+16 meannslope - the mean of negative slopes
+17 g_asymm - ratio of mean postive slopes to the mean of negative slopes (defaults to 10 if the mean of negative slopes is 0, i.e. there are no negative slopes)
+18 rough_g_asymm - ratio of the number of positive slopes to the number of negative slopes (10 if no negative slopes)
+19 diff_asymm - diffence between the mean of the positive slopes and the absolute mean of the negative slopes
+20 skewslope - skew of the distribution of slopes
+21 meanabsslope -  mean of the absolute slopes
+22 varabsslope -  variance of the absolute value of the slopes
+23 varslope - variance of the slopes
+24 absmeansecder - absolute mean of the second derivative
+25 num_pspikes - Number of positive spikes as defined by a positive slope 3 sigma greater than the mean positive slope.
+26 num_nspikes - Number of negative spikes as defined by a negative slope 3 sigma smaller than the mean negative slope.
+27 num_psdspikes - number of positive second derivative spikes (>+4 sigma)
+28 num_nsdspikes - number of negative second derivative spikes (<-4 sigma)
+29 stdratio - ratio of the standard deviation of the positive slopes to the standard deviation of the negative slopes (10 if negative standard deviation is zero)
+30 pstrend - pair slope trend, ratio of positive slopes with a subsequent positive slope to the total number of slopes (N-1)
+31 num_zcross - Number of 'zero' crossings, accounts for longterm trend, so really the number of longterm trendline crossings
+32 num_pm - number of 'plus-minus' slope switches (where slope switches from positive to negative)
+33 len_nmax - number of naive maxima where a maxima is the largest within 10 points on either side
+34 len_nmin - number of naive minima where a minima is the smallest within 10 points on either side
+35 mautocorrcoef - Auto-correlation function of one maxima to the next - np.corrcoef(naivemax[:-1],naivemax[1:])[0][1]
+36 ptpslopes - peak-to-peak slopes 
+37 periodicity - Coefficient of variability for time-differences, ratio of the standard deviation to the mean of time-difference between maxima
+38 periodicityr - coefficient of variability for time-differences of maxima using residuals
+    sum(t_maxima_diff-np.mean(t_maxima_diff))/np.mean(t_maxima_diff)
+39 naiveperiod - mean of the time-differences between naive maxima
+40 maxvars - coefficient of variation of the maxima, ratio of the standard deviation to the mean of the naive maxima flux values 
+41 maxvarsr - coefficient of variation of maxima flux values using residuals instead of standard deviation
+42 oeratio - ratio of odd to even numbered means for naive minima flux values
+43 amp_2 - 2 times the amplitude based on 1st and 99th percentile
+44 normamp - normalized amplitude (amp_2/mean)
+45 mbp - median buffer percentile, fraction of points within 20% of the amplitude to the median
+46 mid20 - ratio of flux percentiles (60th to 40th) over (95th to 5th)
+47 mid35 - "" (67th to 32nd) ""
+48 mid50 - "" (75th to 25th) ""
+49 mid65 - "" (82nd to 17th) ""
+50 mid80 - "" (90th to 10th) ""
+51 percentamp - Largest difference between the max or min flux and the median (as a percentage of the median)
+52 magratio - ratio of the maximum flux value to amp_2
+53 autocorrcoef - auto-correletion coefficient of the flux from one to the next
+54 sautocorrcoef - auto-correlation coefficient of the slopes from one to the next
+55 flatmean - mean 'flatness' around naive maxima. 'Flatness' defined as average absolute value of 6 slopes on either side of maxima.
+56 tflatmean - mean 'flatness' around naive minima
+57 roundmean - mean 'roundness' around naive maxima. 'Roundness' defined as average of second derivatives on either side of maxima
+58 troundmean - mean 'roundness' around naive minima
+59 roundrat - ratio of flatness of maxima to flatness of minima
+60 flatrat - ratio of roundness of maxima to roundness of minima
 
 
-longtermtrend, 
-longtermtrend=np.zeros(len(numpdc))
-
-for i in range(len(numpdc)):
-     longtermtrend[i]=np.polyfit(numtime[i], numpdc[i], 1)[0]
+longtermtrend,
+longtermtrend=np.polyfit(t, f, 1)[0]
 
 meanmedrat, 
-
-"""mean and median flux and relationship"""
-
-means=np.zeros(len(numpdc))  
-
-for i in range(len(numpdc)):
-	means[i]=np.mean(numpdc[i])
-
-medians=np.zeros(len(numpdc))  
-
-for i in range(len(numpdc)):
-	medians[i]=np.median(numpdc[i])
-
-meanmedrat=[means[i]/medians[i] for i in range(len(numpdc))]
-
+"""ratio between mean and median flux"""
+meanmedrat=np.mean(f)/np.median(f)
 
 skews, 
-"""skew"""
-skews=np.zeros(len(numpdc))  
-
-for i in range(len(numpdc)):
-	skews[i]=scipy.stats.skew(numpdc[i])
-
+"""skew of the data, <0 indicates greater spread less than the median"""
+skews=scipy.stats.skew(f)
 
 varss, 
-varss=np.zeros(len(numpdc))  
-
-for i in range(len(numpdc)):
-	varss[i]=np.var(numpdc[i])
+"""Variance of the flux"""
+varss=np.var(f)
 
 
 coeffvar, 
 """Coeff of variability"""
-
-coeffvar=np.zeros(len(numpdc))  
-
-for i in range(len(numpdc)):
-	coeffvar[i]=np.std(numpdc[i])/np.mean(numpdc[i])
-
+coeffvar=np.std(f)/np.mean(f)
 
 stds, 
-"""STD"""
-stds=np.zeros(len(numpdc))  
-
-for i in range(len(numpdc)):
-	stds[i]=np.std(numpdc[i])
+"""Standard deviation"""
+stds=np.std(f)
 
 numoutliers, numnegoutliers, numposoutliers, 
-"""outliers beyond 4 sigma-decent clutering-also try one weighted according to n sigma"""
+"""Fluxes beyond 4 sigma"""
 
-outliers=[0]*len(numpdc)
-for i in range(len(numpdc)):
-	outliers[i]=[numpdc[i][j] for j in range (len(numpdc[i])) if (numpdc[i][j]>means[i]+4*stds[i]) or (numpdc[i][j]<means[i]-4*stds[i])]  
+outliers=[f[j] for j in range(len(f)) if (f[j]>mean+4*std) or (f[j]<mean-4*std)]  
+numoutliers=len(outliers)
+negoutliers=[f[j] for j in range (f)) if (f[j]<mean-4*std)]  
+numnegoutliers=len(negoutliers)
+posoutliers=[f[j] for j in range (f)) if (f[j]>mean+4*std)]  
+numposoutliers=len(posoutliers)
 
-numoutliers=np.zeros(len(numpdc))
+numout1s,
+"""Number of observations with flux outside of 1-sigma from the mean"""
+out1std=[f[j] for j in range (len(f)) if (f[j]>mean+std) or (f[j]<mean-std)] 
+numout1s=len(out1std)
 
-for i in range(len(numpdc)):
-	numoutliers[i]=len(outliers[i])
-
-"""these outliers below for transits"""
-
-negoutliers=[0]*len(numpdc)
-for i in range(len(numpdc)):
-	negoutliers[i]=[numpdc[i][j] for j in range (len(numpdc[i])) if (numpdc[i][j]<means[i]-4*stds[i])]  
-
-numnegoutliers=np.zeros(len(numpdc))
-
-for i in range(len(numpdc)):
-	numnegoutliers[i]=len(negoutliers[i])
-
-numposoutliers=[numoutliers[i]-numnegoutliers[i] for i in range(len(numpdc))]
-
-numout1s, 
-for i in range(len(numpdc)):
-	out1std[i]=[numpdc[i][j] for j in range (len(numpdc[i])) if (numpdc[i][j]>means[i]+stds[i]) or (numpdc[i][j]<means[i]-stds[i])] 
-for i in range(len(numpdc)):
-	numout1s[i]=len(out1std[i])
-
-
+5/31/2018 Bookmark - TODO: simplify all following code definitions
 kurt, """kurtosis"""
 
 kurt=np.zeros(len(numpdc))
@@ -171,8 +123,8 @@ for i in range(len(numpdc)):
 	kurt[i]=scipy.stats.kurtosis(numpdc[i])
 
 
-mad, 
-"""Median AD (MAD)"""
+mad, from Richards et al.
+"""Median Absolute Deviation (MAD)"""
 
 mad=np.zeros(len(numpdc))
 for i in range(len(numpdc)):
@@ -213,7 +165,7 @@ rough_g_asymm,
 
 
 diff_asymm, 
-	diff_asymm[i]=meanpslope[i]-meannslope[i]
+	diff_asymm[i]=meanpslope[i]-abs(meannslope[i])
 
 skewslope, 
 """skew slope- hope of asymmetry"""
@@ -307,9 +259,6 @@ for i in range(len(numpdc)):
 	num_sdspikes[i]=len(sdspikes[i])
 	num_sdspikes2[i]=len(sdspikes2[i])
 
-
-
-
 pstrend, """pair slope trend"""
 pstrend=np.zeros(len(numpdc))
 for i in range(len(numpdc)):
@@ -339,8 +288,8 @@ plusminus=[0]*len(numpdc)
 for i in range(len(numpdc)):
 	plusminus[i]=[j for j in range(1,len(slopes[i])) if (slopes[i][j]<0)&(slopes[i][j-1]>0)]
 
-num_pm=np.zeros(len(numpdc))  
-num_pm=[len(plusminus[i]) for i in range(len(numpdc))] 
+num_pm=np.zeros(len(numpdc))
+num_pm=[len(plusminus[i]) for i in range(len(numpdc))]
 
 
 len_nmax
@@ -383,7 +332,6 @@ for i in range(len(numpdc)):
 	mautocorrcoef[i]=np.corrcoef(naivemaxes[i][:-1:], autopdcmax[i])[0][1]
 	mautocovs[i]=np.cov(naivemaxes[i][:-1:],autopdcmax[i])[0][1]
  
-
 ptpslopes - """peak to peak slopes"""
 ptpslopes=np.zeros(len(numpdc))
 ppslopes=[0]*len(numpdc)
@@ -414,8 +362,6 @@ for i in range(len(numpdc)):
 maxvars & maxvarsr - """variation coefficient of the maxima"""
 maxvars=np.zeros(len(numpdc))
 maxvarsr=np.zeros(len(numpdc))
-for i in range(len(numpdc)):
-	maxvars[i]=np.std(naivemaxes[i])/np.mean(naivemaxes[i])
 
 for i in range(len(numpdc)):
 	maxvars[i]=np.std(naivemaxes[i])/np.mean(naivemaxes[i])
