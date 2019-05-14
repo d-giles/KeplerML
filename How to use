@@ -27,7 +27,7 @@ If you have calculated features already and they are contained in a .npy file wi
     2. Open ClusterWorkbook.ipynb with ipython notebook.
         Command:
         ipython notebook
-        Navigate to ClusterWorkbook
+        Navigate to ClusterWorkbook.ipynb
     3a. (optional) Determine optimal k for k-means clustering with optimalK.py. This is time consuming and should only be run once per dataset, it outputs to the terminal and does not produce any output files.
         User Input:
         Type the unique identifier of the .npy file
