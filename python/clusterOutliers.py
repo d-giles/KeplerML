@@ -10,7 +10,7 @@ from sklearn.cluster import DBSCAN, KMeans
 
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib import colors
 import matplotlib.cm as cmx
 import matplotlib.gridspec as gridspec
@@ -65,7 +65,7 @@ class clusterOutliers(object):
 
         return t, nf, err
     
-    def randSampleWTabby(self, numLCs=10000, df='self',tabby=True):
+    def sample(self, numLCs=10000, df='self',tabby=True):
         """
         Rerunning this, or randSample will replace the previous random sample.
         """
@@ -88,12 +88,12 @@ class clusterOutliers(object):
         self.sampleGenerated = True
         return sample
     
-    def scale_data(data):
+    def scale_data(self,data):
         scaler = preprocessing.StandardScaler().fit(data)
         scaledData = scaler.transform(data)
         return scaledData
     
-    def tsne_fit(data,perplexity='auto',scaled=False):
+    def tsne_fit(self,data,perplexity='auto',scaled=False):
         """
         Performs a t-SNE dimensionality reduction on the data sample generated.
         Uses a PCA initialization and the perplexity given, or defaults to 1/10th the amount of data.
@@ -104,7 +104,8 @@ class clusterOutliers(object):
         if type(perplexity)==str:
             perplexity=len(data)/10
         if not scaled:
-            scaledData = scale_data(data)
+            scaler = preprocessing.StandardScaler().fit(data)
+            scaledData = scaler.transform(data)
         tsne = TSNE(n_components=2,perplexity=perplexity,init='pca',verbose=True)
         fit=tsne.fit_transform(scaledData)
         tsne_x = fit.T[0]
@@ -164,7 +165,9 @@ class clusterOutliers(object):
         files = df.index
         
         if type(clusterLabels) == str:
-            labels = df[labels]
+            labels = df[clusterLabels]
+        else:
+            labels = clusterLabels
 
         cNorm  = colors.Normalize(vmin=0, vmax=max(labels))
         scalarMap = cmx.ScalarMappable(norm=cNorm, cmap='jet')

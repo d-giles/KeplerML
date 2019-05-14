@@ -6,66 +6,25 @@ from sklearn.cluster import DBSCAN
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
 
-def eps_est_recursive(data):
-    
-    # distance array containing all distances
-    nbrs = NearestNeighbors(n_neighbors=int(np.ceil(.2*len(data))), algorithm='ball_tree').fit(data)
-    distances, indices = nbrs.kneighbors(data)
-    # Distance to 2*N/100th instead of 4th because: ... reasons
-    neighbors = int(np.ceil(.02*len(data)))
-    distArr = distances[:,neighbors]
-    distArr.sort()
-    pts = range(len(distArr))
-
-    # The following looks for the first instance (past the mid point)
-    # where the mean of the following [number] points
-    # is at least (cutoff-1)*100% greater than the mean of the previous [number] points.
-    # Alternatively, we could consider the variance of the points and draw conclusions from that
-    
-    if len(data) <= 200:
-        number = 10
-    else:
-        number = 50
-    cutoff = 1.05
-    for i in range(int(np.ceil(len(pts)/2)),len(pts)-number):
-        if np.mean(distArr[i+1:i+number])>=cutoff*np.mean(distArr[i-number:i-1]):
-            dbEps = distArr[i]
-            break
-
-    # Estimating nneighbors by finding the number of pts. 
-    # that fall w/in our determined eps for each point.
-
-    count = np.zeros(len(pts))
-    for i in pts:    
-        for dist in distances[i]:
-            if dist <= dbEps:
-                count[i]+=1
-    average = np.median(count)
-    sigma = np.std(count)
-    neighbors = average/2 # Divide by 2 for pts on the edges of clusters
-    print("""
-    Epsilon is in the neighborhood of %s, 
-    with an average of %s neighbors within epsilon,
-    %s neighbors in half circle (neighbors/2).
-    """%(dbEps,average,neighbors))
-    return dbEps,neighbors
-
 def eps_est(data,n=4,verbose=True):
+    """
+    Minimum data size is 1000
+    Methodology improvement opportunity: Better elbow locater
+    """
     
-    # distance array containing all distances
     if verbose:print("Calculating nearest neighbor distances...")
     nbrs = NearestNeighbors(n_neighbors=int(max(n+1,100)), algorithm='ball_tree',n_jobs=-1).fit(data)
     distances, indices = nbrs.kneighbors(data)
     del nbrs
-    distArr = distances[:,n]
+    distArr = distances[:,n] # distance array containing all distances to nth neighbor
     distArr.sort()
-    del distances
     pts = range(len(distArr))
 
     # The following looks for the first instance (past the mid point)
     # where the mean of the following [number] points
     # is at least (cutoff-1)*100% greater than the mean of the previous [number] points.
-    
+    # Number is currently set to be 0.2% of the total data
+    # This works pretty well on data scaled to unit variance. Area for improvement though.
     number = int(np.ceil(len(data)/500))
     cutoff = 1.05
     if verbose:print("Finding elbow...")
@@ -97,10 +56,10 @@ def dbscan_w_outliers(data,min_n=4,check_tabby=False,verbose=True):
     dbEps,distArr = eps_est(X_sample,n=min_n,verbose=verbose)
     if len(X)>10000:
         if verbose:print("Scaling density...")
-        min_n = len(X)/10000*min_n
+        min_n = int(len(X)/10000*min_n)
     
     if verbose:print("Clustering data with DBSCAN, eps={:05.2f},min_samples={}...".format(dbEps,min_n))
-    #est = DBSCAN(eps=dbEps,min_samples=min_n,n_jobs=-1)
+    #est = DBSCAN(eps=dbEps,min_samples=min_n,n_jobs=-1) # takes too long, deprecated
     #est.fit(X)
     #clusterLabels = est.labels_
     # Outlier score: distance to 4th neighbor?
@@ -109,8 +68,12 @@ def dbscan_w_outliers(data,min_n=4,check_tabby=False,verbose=True):
     del nbrs
     distArr = distances[:,min_n]
 
+    # The following determines the cluster edge members
+    # by checking if any outlying points contain a clustered neighbor.
+    # Necessary given the heuristic nature of epsilon, provides a buffer.
+    # Optimization opportunity: this could be parellelized pretty easily
     d = {True:-1,False:0}
-    clusterLabels = np.array([d[pt>dbEps] for pt in distArr])
+    clusterLabels = np.array([d[pt>dbEps] for pt in distArr]) 
     for i,label in enumerate(clusterLabels):
         # For all identified outliers (pts w/o enough neighbors):
         if label == -1:
@@ -135,12 +98,9 @@ def dbscan_w_outliers(data,min_n=4,check_tabby=False,verbose=True):
             print("MISSING: Tabby is not in this data.")
                      
     numout = len(clusterLabels[clusterLabels==-1])
-    numclusters = max(clusterLabels+1)
+    numedge = len(clusterLabels[clusterLabels==1])
     if verbose:
-        if numclusters==1:
-            print("There was {:d} cluster and {:d} total outliers".format(numclusters,numout))
-        else:
-            print("There were {:d} clusters and {:d} total outliers".format(numclusters,numout))
+        print("There are {:d} total outliers and {:d} edge members.".format(numout,numedge))
 
     return clusterLabels
 
@@ -149,9 +109,9 @@ if __name__=="__main__":
     If this is run as a script, the following will parse the arguments it is fed, 
     or prompt the user for input.
     
-    python keplerml.py path/to/filelist path/to/fits_file_directory path/to/output_file
+    python db_outliers.py path/to/file n_features path/to/output_file
     """
-    # fl - filelist, a txt file with file names, 1 per line
+    # f - file, pandas dataframe saved as csv with calculated features
     if sys.argv[1]:
         f = sys.argv[1]
     else:
@@ -162,13 +122,20 @@ if __name__=="__main__":
     
     df = pd.read_csv(f,index_col=0)
     
-    if sys.argv[2]:
-        of = sys.argv[2]
+    if sys.argv[2]:n_feat=sys.argv[2]
+    else: n_feat = raw_input("Number of features in data: ")
+    if not n_feat:
+        print("No features specified, assuming default number of features, 60.")
+        n_feat = 60
+           
+    # of - output file
+    if sys.argv[3]:
+        of = sys.argv[3]
     else:
         of = raw_input("Output path: ")
     if not of:
         print("No output path specified, saving to 'output.npy' in local folder.")
         of = 'output'
     
-    np.save(of,dbscan_w_outliers(df[['tsne_x','tsne_y']]))
+    np.save(of,dbscan_w_outliers(df[:n_feat]))
     print("Done.")
