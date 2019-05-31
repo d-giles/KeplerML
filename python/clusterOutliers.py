@@ -47,7 +47,7 @@ class clusterOutliers(object):
         self.output_file = output_file
         self.files = self.data.index # A list of all files.
         # Initializing the data and files samples with 1000 entries.
-        self.sample(1000,df='self',tabby=False,replace=True,rs=42) # Initializes self.dataSample and self.filesSample
+        self.sample(100,df='self',tabby=False,replace=True,rs=42) # Initializes self.dataSample and self.filesSample
         # Storing all reductions related to this object's data in its own reductions dictionary.
         self.reductions = dict()
     

@@ -13,6 +13,7 @@ np.set_printoptions(threshold=sys.maxsize)
 import pandas as pd
 import astropy.io.fits as fits
 import seaborn as sns
+import sklearn
 from sklearn import preprocessing
 from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
@@ -177,6 +178,14 @@ def colors_for_plot(inds,cmap='nipy_spectral'):
         scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cmap)
         colorVal = scalarMap.to_rgba(inds)
     return colorVal
+
+def panel(data, ax, c=None, cmap=None, shade=False, t='k', alpha=1):
+    if t=='k':
+        sns.kdeplot(data.iloc[:,0],data.iloc[:,1],
+                    shade=shade,ax=ax,cmap=cmap,shade_lowest=False,alpha=alpha)
+    elif t=='s':
+        ax.scatter(data.iloc[:,0],data.iloc[:,1],
+                   c=c,marker='.',alpha=alpha)
 
 def four_panel(data, title='Data',
                col_clus='Greens_d',shade_clus=False,
@@ -410,11 +419,11 @@ def interactive_plot(df,pathtofits,clusterLabels):
     else:
         labels = clusterLabels
 
-    colorVal = colors_for_plot(labels)
+    colorVal = colors_for_plot(labels,cmap='color_blind')
 
-    data_out = df[labels==-1]
+    data_out = df[labels!=0]
     files_out = data_out.index
-    data_cluster = df[labels!=-1]
+    data_cluster = df[labels==0]
     files_cluster = data_cluster.index
     
     data = np.array(df.iloc[:,[0,1]])
@@ -446,41 +455,6 @@ def interactive_plot(df,pathtofits,clusterLabels):
         ax2 = fig.add_subplot(gs[1,:])
         # empty subplot for center detail
         ax3 = fig.add_subplot(gs[0,67:])
-    @cuda.jit
-    def distance_cuda(dx,dy,dd):
-        bx = cuda.blockIdx.x # block in the grid
-        bw = cuda.blockDim.x # size of a block
-        tx = cuda.threadIdx.x # unique thread ID within a block
-        i = tx + bx * bw
-        if i>len(dd):
-            return
-        
-        # d_ph is a distance placeholder
-        d_ph = (dx[i]-dx[0])**2+(dy[i]-dy[0])**2
-        dd[i]=d_ph**.5
-        return
-    
-    def distances(pts,ex,ey):
-        # Calculates distances between N points
-        pts = np.array(pts)
-        N=len(pts)
-        # Allocate host memory arrays
-        # Transpose pts array to n_dims x n_pts, each index of x contains all of a dimensions coordinates
-        XT = np.transpose(pts)
-        x = np.array(XT[0])
-        x = np.insert(x,0,ex)
-        y = np.array(XT[1])
-        y = np.insert(y,0,ey)
-        d = np.zeros(N)
-        # Allocate and copy GPU/device memory
-        d_x = cuda.to_device(x)
-        d_y = cuda.to_device(y)
-        d_d = cuda.to_device(d)
-        threads_per_block = 128
-        number_of_blocks =int(N/128)+1 
-        distance_cuda [number_of_blocks, threads_per_block](d_x,d_y,d_d)
-        d_d.copy_to_host(d)
-        return d[1:]   
     
     def calcClosestDatapoint(X, event):
         """Calculate which data point is closest to the mouse position.
@@ -491,10 +465,12 @@ def interactive_plot(df,pathtofits,clusterLabels):
             smallestIndex (int) - the index (into the array of points X) of the element closest to the mouse position
         """
         ex,ey = ax.transData.inverted().transform((event.x,event.y))
-        
-        #distances = [distance (XT[:,i], event) for i in range(XT.shape[1])]
-        Ds = distances(X,ex,ey)
-        return np.argmin(Ds)
+        X = np.array(X)
+        x = X.T[0]
+        y = X.T[1]
+        d = ((x-ex)**2+(y-ey)**2)**.5
+        return np.argmin(d)
+    
     def drawData(index):
         # Plots the lightcurve of the point chosen
         ax2.cla()
@@ -523,6 +499,7 @@ def interactive_plot(df,pathtofits,clusterLabels):
         ax2.set_ylabel(r'$\frac{\Delta F}{F}$',fontsize=30)
         fig.suptitle(files[index][:13],fontsize=30)
         canvas.draw()
+        
     def annotatePt(XT, index):
         """Create popover label in 3d chart
         Args:
@@ -577,10 +554,12 @@ def interactive_plot(df,pathtofits,clusterLabels):
         ax.set_xlabel("Reduced X",fontsize=18)
         ax.set_ylabel("Reduced Y",fontsize=18)
         # Scatter the data
-        ax.scatter(outX, outY,c="red",s=30,alpha=.5)
-        ax.hexbin(clusterX,clusterY,mincnt=5,bins="log",cmap="viridis",gridsize=35)
-        hb = ax3.hexbin(clusterX,clusterY,mincnt=5,bins="log",cmap="viridis",gridsize=35)
-        cb = fig.colorbar(hb)
+        ax.scatter(outX, outY,c=colorVal[labels!=0],s=30,alpha=.5)
+        sns.kdeplot(clusterX,clusterY,shade=False,ax=ax,cmap="viridis",shade_lowest=False)
+        #ax.hexbin(clusterX,clusterY,mincnt=5,bins="log",cmap="viridis",gridsize=35)
+        hb = sns.kdeplot(clusterX,clusterY,shade=False,ax=ax3,cmap="viridis",shade_lowest=False)
+
+        #cb = fig.colorbar(hb)
         """
         ax.scatter(clusterX,clusterY,s=30,c='b')
         ax3.scatter(clusterX,clusterY)
