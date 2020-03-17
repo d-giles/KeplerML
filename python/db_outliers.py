@@ -4,7 +4,6 @@ DBSCAN Clustering
 import numpy as np
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import NearestNeighbors
-import matplotlib.pyplot as plt
 
 def eps_est(data,n=4,verbose=True):
     """

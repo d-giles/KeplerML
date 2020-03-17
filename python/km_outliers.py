@@ -8,12 +8,13 @@ arranged as follows:
 
 import random
 import numpy as np
-np.set_printoptions(threshold='nan')
-from multiprocessing import Pool,cpu_count
 import sys
+np.set_printoptions(threshold=sys.maxsize)
+from multiprocessing import Pool,cpu_count
+
 from datetime import datetime
 #from accelerate import cuda
-from accelerate.cuda import cuda
+from numba import cuda
 from sklearn.cluster import KMeans
 
 @cuda.jit
