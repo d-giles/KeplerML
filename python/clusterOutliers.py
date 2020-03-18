@@ -23,6 +23,11 @@ def import_gen(filedir="/home/dgiles/Documents/KeplerLCs/output/",suffix="_outpu
     """
     return lambda QN: clusterOutliers(filedir+QN+suffix,fitsdir+QN+"fitsfiles",output_file=filedir+QN+out_file_ext)
 
+def load_coo(path_to_coo):
+    with open(path_to_coo,'rb') as file:
+        coo_file = pickle.load(path_to_coo)
+    return coo_file
+
 class clusterOutliers(object):
     def __init__(self,feats,fitsDir,output_file='out.coo'):
         # feats may be provided as the dataframe itself or a filepath to a pickle or csv file containing a single dataframe.
