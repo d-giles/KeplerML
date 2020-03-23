@@ -1,5 +1,6 @@
 import os
 import sys
+assert sys.version_info >= (3,0)
 import numpy as np 
 import pandas as pd
 np.set_printoptions(threshold=sys.maxsize)
@@ -123,7 +124,7 @@ def recover(fl,temp_file,fl_as_array=False):
 
     return files, df
 
-@njit
+@njit(parallel=True)
 def easy_feats(t,nf,err):
     nf_mean = np.mean(nf)
     nf_med = np.median(nf)
@@ -493,7 +494,7 @@ def feature_calc(lc):
     nfile,t,nf,err = lc[0],lc[1],lc[2],lc[3]
 
     try:
-        ndata = feats(t.astype(np.float64),nf.astype(np.float32),err.astype(np.float32))
+        ndata = feats(t,nf,err)
             
         fts = ["longtermtrend", "meanmedrat", "skews", "varss", "coeffvar", "stds", \
                "numoutliers", "numnegoutliers", "numposoutliers", "numout1s", "kurt", "mad", \
@@ -508,8 +509,14 @@ def feature_calc(lc):
         # A failsafe, dumps the data to a temp file in case of failure during processing of another lightcurve.
         # Reading in the temp file is a huge pain though.
         df = pd.DataFrame([ndata],index=[nfile[nfile.find('kplr'):]],columns=fts)
-        with open(tmpfile,'ab') as f:
-            pickle.dump(df,f)
+        try:
+            with open(tmpfile,'ab') as f:
+                pickle.dump(df,f)
+        except:
+            tmpfile = 'tmp_data.p'
+            with open(tmpfile,'ab') as f:
+                pickle.dump(df,f)
+             
         return [nfile[nfile.find('kplr'):],ndata]
         
     except TypeError:
@@ -520,9 +527,9 @@ def feature_calc(lc):
 def import_lcs(nfile):
     """
     Purpose: 
-        Read in a lightcurve
+        Read in a lightcurve, wrapper for read_kepler_curve
     Args:
-        nflie (string) - file including path of lightcurve (as a fits file)
+        nfile (string) - file including path of lightcurve (as a fits file)
     Returns:
         t (np.array) - time array
         nf (np.array) - normalized flux array
@@ -530,6 +537,7 @@ def import_lcs(nfile):
     """
     try:
         t,nf,err = read_kepler_curve(nfile)
+        t,nf,err = t.astype(np.float64),nf.astype(np.float32),err.astype(np.float32)
         
     except TypeError as err:
         # Files can be truncated by the zipping process.
@@ -558,7 +566,7 @@ def join_data(full_features_array):
     df = pd.DataFrame(data,index=file,columns=fts)
     return df
 
-def features_from_filelist(fl,fitDir,of,fl_as_array=False, numCpus = cpu_count(), verbose=False, tmp_file='tmp_data.p'):
+def features_from_filelist(fl,fitDir,of,fl_as_array=False, numCpus = cpu_count(), verbose=False, prime_feats=True,tmp_file='tmp_data.p'):
     """
     Purpose:
         This method calculates the features of the given filelist from the fits files located in fitsDir.
@@ -574,6 +582,11 @@ def features_from_filelist(fl,fitDir,of,fl_as_array=False, numCpus = cpu_count()
         numCpus (integer) - Number of cpus on which to process the files
         verbose (boolean) - if True will output progress statements
         tmp_file (string) - specifies where to save the temporary data. Useful if processing multiple sets of data in parallel.
+    Notes:
+        Multiprocessing is used for light curve import only at this stage. It was formerly used
+            to improve feature calculation time, but using Numba for several features significantly
+            improved the overall calculation time and multiprocessing for feature calculation 
+            has not provided any additional speed up in conjunction with Numba.
 
     Returns:
         Pandas dataframe of output for all files in the filelist
@@ -601,7 +614,9 @@ def features_from_filelist(fl,fitDir,of,fl_as_array=False, numCpus = cpu_count()
     lcs = p.map(import_lcs,files)
     p.close()
     p.join()
+
     if verbose:print("Lightcurve import took {}".format(datetime.now()-startTime))
+
     fts = ["longtermtrend", "meanmedrat", "skews", "varss", "coeffvar", "stds", \
            "numoutliers", "numnegoutliers", "numposoutliers", "numout1s", "kurt", "mad", \
            "maxslope", "minslope", "meanpslope", "meannslope", "g_asymm", "rough_g_asymm", \
@@ -620,25 +635,21 @@ def features_from_filelist(fl,fitDir,of,fl_as_array=False, numCpus = cpu_count()
     len_last_chunk = nlcs%10000
     if verbose:print("Processing %s files..."%len(files))
     featsStartTime = datetime.now()
+    if prime_feats == True:
+        feats(lcs[0][1],lcs[0][2],lcs[0][3]) # Numba's njit needs primed unless already done
     for i in range(nchunks):
         chunkStartTime = datetime.now()
-        p = Pool(useCpus)
         # Method saves to tmp_data.p file after processing each lightcurve as a failsafe.
-        full_features = p.map(feature_calc,lcs[i*10000:(i+1)*10000])    
-        p.close()
-        p.join()
-        
+        full_features = [feature_calc(lc) for lc in lcs[i*10000:(i+1)*10000]]
         df = df.append(join_data(full_features))
         with open(tmpfile,'wb') as file:pickle.dump(df,file) # overwrites failsafe with single dataframe containing all processed data, easier to process if system failure later.
         del(full_features)
         
         if verbose:print("{}/{} completed. Time for chunk: {}".format((i+1)*10000,nlcs,datetime.now()-chunkStartTime))
-
     # last chunk
-    p = Pool(useCpus)
-    full_features = p.map(feature_calc,lcs[nlcs-len_last_chunk:])
-    p.close()
-    p.join()
+    chunkStartTime = datetime.now()
+    full_features = [feature_calc(lc) for lc in lcs[nlcs-len_last_chunk:]]
+    if verbose:print("{}/{} completed. Time for chunk: {}".format(nlcs,nlcs,datetime.now()-chunkStartTime))
     df = df.append(join_data(full_features))
     del(full_features)
     
@@ -655,8 +666,8 @@ def features_from_filelist(fl,fitDir,of,fl_as_array=False, numCpus = cpu_count()
         return
     else:
         with open(of,'rb') as file:
-            feats = pickle.load(file)
-        return feats
+            features = pickle.load(file)
+        return features
     
 if __name__=="__main__":
     """

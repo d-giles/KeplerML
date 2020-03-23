@@ -23,6 +23,11 @@ def import_gen(filedir="/home/dgiles/Documents/KeplerLCs/output/",suffix="_outpu
     """
     return lambda QN: clusterOutliers(filedir+QN+suffix,fitsdir+QN+"fitsfiles",output_file=filedir+QN+out_file_ext)
 
+def load_coo(path_to_coo):
+    with open(path_to_coo,'rb') as file:
+        coo_file = pickle.load(file)
+    return coo_file
+
 class clusterOutliers(object):
     def __init__(self,feats,fitsDir,output_file='out.coo'):
         # feats may be provided as the dataframe itself or a filepath to a pickle or csv file containing a single dataframe.
@@ -39,7 +44,8 @@ class clusterOutliers(object):
                 except:
                     print("File format not recognized. Feature data must be stored as a dataframe in either a pickle or a csv.")
             assert type(self.data) == pd.core.frame.DataFrame, 'Feature data must be formatted as a pandas dataframe.'
-        self.feats = self.data # self.feats defined as an alias for the data.
+        self.feats = self.data # self.feats is an alias for the data.
+        self.scaled_data = qt.data_scaler(self.data)
         if fitsDir[-1]=="/":
             self.fitsDir = fitsDir
         else:
@@ -47,10 +53,15 @@ class clusterOutliers(object):
         self.output_file = output_file
         self.files = self.data.index # A list of all files.
         # Initializing the data and files samples with 1000 entries.
-        self.sample(100,df='self',tabby=False,replace=True,rs=42) # Initializes self.dataSample and self.filesSample
+        self.sample(
+            1000,
+            df='self',
+            tabby=False,
+            replace=True,
+            rs=42) # Initializes self.dataSample and self.filesSample
         # Storing all reductions related to this object's data in its own reductions dictionary.
         self.reductions = dict()
-    
+        self.pca_red() # Initializes with pca reduction for plotting
     def sample(self, numLCs=10000, df='self',tabby=True, replace=True,rs=False):
         """
         Args:
@@ -98,9 +109,10 @@ class clusterOutliers(object):
     
     def pca_red(self,df='self',red_name='PCA90',var_rat=0.9,scaled=False,verbose=True):
         if type(df)!=pd.core.frame.DataFrame:
-            df = self.data
+            df = self.scaled_data
         pcaRed = qt.pca_red(df,var_rat,scaled,verbose)
-        self.reductions[red_name]=pcaRed
+        if type(df)!=pd.core.frame.DataFrame:
+            self.reductions[red_name]=pcaRed
         return pcaRed
     
     def save(self,of=False):

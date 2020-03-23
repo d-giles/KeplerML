@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('TkAgg')
 import sys
 from IPython.display import display
 import matplotlib.pyplot as plt
@@ -12,14 +14,17 @@ import numpy as np
 np.set_printoptions(threshold=sys.maxsize)
 import pandas as pd
 import astropy.io.fits as fits
+from astroquery.mast import Observations # how to remotely access Kepler data from Mast
+import shutil # to delete downloaded fits files once done
+
 import seaborn as sns
 import sklearn
 from sklearn import preprocessing
 from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
-from sklearn.cluster import DBSCAN, KMeans
+from sklearn.cluster import DBSCAN
+from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-
 
 if sys.version_info[0] < 3:
     import Tkinter as Tk
@@ -48,30 +53,93 @@ def read_kepler_curve(file):
     
     return t, nf, err
 
-def make_sampler(inds=['8462852']): 
+def get_kepler_lcs(filenames):
     """
     Purpose:
-        Useful to generate samples across quarters with common sources where data is contained as a 
-        Pandas dataframe, with indices set to be identifying labels (i.e. kplr008462852)
+        Downloads lightcurves
+    Args:
+        filenames - list of full filenames
+    returns:
+        paths_to_files - list containing the full paths to downloaded lightcurves.
+    """
+    filenames = list(tmp.index[:n])
+    obj_ids = [i[:13] for i in filenames]
+    keplerObs = Observations.query_criteria(target_name=obj_ids, obs_collection='Kepler')
+    keplerProds = Observations.get_product_list(keplerObs)
+    yourProd = Observations.filter_products(keplerProds, extension=filenames)
+    manifest = Observations.download_products(yourProd)
+    
+    """
+    The process of downloading the files sorts them in numerical order messing up the 
+    order, so I'm making the manifest a dataframe and sampling it
+    one at a time from the filenames, not sure if there's a way to just sort the whole list
+    based on the original order.
+    """
+    manifest = manifest.to_pandas(index='Local Path')
+    paths_to_files = []
+    for i,f in enumerate(filenames): # forcing the order to match most to least outlying
+        f_sampler = qt.make_sampler([f]) # to find the right file from manifest
+        filename = f_sampler(manifest).index[0] # full local filepath
+        paths_to_files.append(filename)
+        
+    return paths_to_files
+
+def rm_kepler_lcs():
+    shutil.rmtree('./mastDownload')
+    return
+
+def make_sampler(inds=['8462852']): 
+    """
+    --------------------------------------------------------------------
+    Purpose:
+        Useful to generate samples across quarters with common sources 
+        where data is contained as a Pandas dataframe, with indices set 
+        to be arbitrary identifying labels (i.e. kplr008462852)
         
     Args:
-        inds (Array of strings) - array of indices, as identifying strings, to be pulled from a data frame, 
-                                  can be with or without kplr prefix
+        inds (Array of strings) - array of indices, as identifying 
+            strings, to be pulled from a data frame, can be with or 
+            without kplr prefix
     Returns:
-        Function that will pull the data, indicated by inds, from a dataframe df 
+        Function that will pull the data, indicated by inds, from a 
+        dataframe df 
     
     To use:
-        Define array containing IDs of sources of interest as strings
-        Define a sample generator by calling make_sampler(inds=Array of string IDs)
-        Generate dataframe by calling new function.
+        - Define array containing IDs of sources of interest as strings
+        - Define a sample generator by calling make_sampler(inds=Array 
+            of string IDs) 
+        - Generate dataframe by calling new function.
 
     Example:
-        tabby_sample = make_sampler(inds=['8462852']) # A sampler function for the specified sample
+        # A sampler function for the specified sample
+        tabby_sample = make_sampler(inds=['8462852']) 
         Q4_sample = tabby_sample(Q4.data) # The Quarter 4 data for the sample
         Q8_sample = tabby_sample(Q8.data) # The quarter 8 data for the sample
         etc.
     """
     return lambda df: df[df.index.str.contains('|'.join(inds))]
+
+def subset_kepler_df(df,inds=[8462852]):
+    """
+    --------------------------------------------------------------------
+    Purpose:
+        A much more efficient sampler that requires inds to be fed in as 
+        integers and the dataframe index to be the full identifying 
+        file, i.e. 'kplr008462852_############llc.fits.'
+    Args:
+        df - dataframe to draw the subset from
+        inds list(ints) - a list of Kepler IDs as integers
+    Returns:
+        subset_df (dataframe) - a pandas dataframe with only the 
+            relevant data
+    --------------------------------------------------------------------
+    """
+    df_copy = df.copy() # don't want to operate on the original dataframe
+    df_copy['KIC'] = df_copy.index
+    df_copy.index = [int(i[4:13]) for i in df_copy.index]
+    subset_df = df_copy.loc[inds,:].copy()
+    subset_df.set_index('KIC',inplace=True)
+    return subset_df
 
 #####################################
 ### Functions for data processing ###
@@ -160,14 +228,21 @@ def pca_red(data,var_rat=0.9,scaled=False,verbose=True):
 ##############################
 def colors_for_plot(inds,cmap='nipy_spectral'):
     """
+    --------------------------------------------------------------------
     Args:
-        inds (array of ints size n) - array to be converted into color values
+        inds (array of ints size n) - array to be converted into color 
+            values
         cmap (str) - colormap of desired output
         
     Returns:
-        colorVal (numpy array, size (n,4)) - numpy array containing colors as rgba array or hex color values
-        
-    colormap 'color_blind' consists of 3 distinct colors specifically chosen that show up well regardless of color-sight
+        colorVal (numpy array, size (n,4)) - numpy array containing 
+            colors as rgba array or hex color values
+    
+    Note:    
+        colormap 'color_blind' consists of 3 distinct colors 
+            specifically chosen that show up well regardless of 
+            color-sight
+    --------------------------------------------------------------------
     """
     if cmap=='color_blind':
         # Custom set of colors to use that are color blind friendly
@@ -178,14 +253,6 @@ def colors_for_plot(inds,cmap='nipy_spectral'):
         scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cmap)
         colorVal = scalarMap.to_rgba(inds)
     return colorVal
-
-def panel(data, ax, c=None, cmap=None, shade=False, t='k', alpha=1):
-    if t=='k':
-        sns.kdeplot(data.iloc[:,0],data.iloc[:,1],
-                    shade=shade,ax=ax,cmap=cmap,shade_lowest=False,alpha=alpha)
-    elif t=='s':
-        ax.scatter(data.iloc[:,0],data.iloc[:,1],
-                   c=c,marker='.',alpha=alpha)
 
 def four_panel(data, title='Data',
                col_clus='Greens_d',shade_clus=False,
@@ -311,7 +378,7 @@ def four_panel(data, title='Data',
     
     return
 
-def plot_lc(file,filepath,c='blue',ax=False):
+def plot_lc(file,filepath='./fitsFiles/',local=True,c='blue',ax=False):
     """
     kid should be full id including time information
     Args:
@@ -320,10 +387,21 @@ def plot_lc(file,filepath,c='blue',ax=False):
     Returns:
         None
     """
+    if local:
+        f=filepath+file
+    else:
+        filenames = [file]
+        obj_ids = [i[:13] for i in tmp.index[:n]]
+        keplerObs = Observations.query_criteria(target_name=obj_ids, obs_collection='Kepler')
+        keplerProds = Observations.get_product_list(keplerObs)
+        yourProd = Observations.filter_products(keplerProds, extension=file)
+        manifest = Observations.download_products(yourProd)
+        manifest = manifest.to_pandas(index='Local Path')
+        f=manifest.index[0]
+
     if not ax:
         fig = plt.figure(figsize=(16,4))
         ax = fig.add_subplot(111)
-    f = filepath+file
     
     t,nf,err=read_kepler_curve(f)
 
@@ -386,18 +464,57 @@ def four_Q_lc(kid,Qa,Qb,Qc,Qd):
     ax1.legend(loc='upper center',bbox_to_anchor=(0.5,1.05),ncol=3, fontsize=18)
     
     fig.tight_layout()
-
     
-catalogs = {'koi_full':['list_koi_full.txt',',',2],
-            'koi_confirmed':['list_koi_confirmed.txt',',',2],
-            'koi_candidate':['list_koi_candidate.txt',',',2],
-            'koi_fp':['list_koi_fp.txt',',',2],
-            'EB':['list_EBs.csv',',',0],
-            'HB':['list_kepler_heartbeats.txt',None,37],
-            'flares':['kepler_solar_flares.txt',None,22],
-            'no_signal':['list_kepler_nosig.txt',None,28],
-            'periodic':['list_kepler_MSperiods.txt',None,32]}
+def plot_top_n(Q_coo,n=10,sortby='sAverage',top_n_df=False):
+    """
+    Purpose:
+        Plots the top n outlier lightcurves for a given quarter. This assumes data is saved in the standard
+        way for coo files, i.e. that feature data is saved as the attribute 'data' in a dataframe, that outlier scores are
+        saved as 'scores', and that the indices of each are the full file names.
+    Args:
+        Q_coo (cluster outlier object) - The cluster outlier object containing the feature data and outlier scores attributes
+        n (int) - number of plots to create of most outlying points
+        sortby (optional, str) - how to sort scores, default is the sampled average of k=4 to 13
+        top_n_df (optional, boolean) - whether or not to return a dataframe containing the features of the top outliers
+    Returns:
+        top_n_feats (optional, dataframe) - pandas dataframe containing the features of the top n outliers
+    """
 
+    tmp = Q_coo.scores.sort_values(by=sortby,ascending=False)
+    filenames = list(tmp.index[:n])
+    obj_ids = [i[:13] for i in tmp.index[:n]]
+    keplerObs = Observations.query_criteria(target_name=obj_ids, obs_collection='Kepler')
+    keplerProds = Observations.get_product_list(keplerObs)
+    yourProd = Observations.filter_products(keplerProds, extension=filenames)
+    manifest = Observations.download_products(yourProd)
+    
+    """
+    The process of downloading the files sorts them in numerical order messing up the 
+    order of most outlying to leas, so I'm making the manifest a dataframe and sampling it
+    one at a time from the filenames, not sure if there's a way to just sort the whole list
+    based on the original order.
+    """
+    manifest = manifest.to_pandas(index='Local Path')
+    
+    for i,f in enumerate(filenames): # forcing the order to match most to least outlying
+        f_sampler = make_sampler([f]) # to find the right file from manifest
+        filename = f_sampler(manifest).index[0] # full local filepath
+
+        fig = plt.figure(figsize=(15,1))
+        ax = fig.add_subplot(111)
+        t,nf,err = read_kepler_curve(filename)
+        ax.errorbar(t,nf,err)
+        plt.title('KIC {}'.format(int(obj_ids[i][4:])))
+        
+    shutil.rmtree('./mastDownload') # removing the downloaded data
+    
+    if top_n_df:
+        top_n_sampler = make_sampler(tmp[:n].index)
+        top_n_feats = top_n_sampler(Q_coo.data)
+        return top_n_feats
+    else:
+        return
+    
 def interactive_plot(df,pathtofits,clusterLabels):
     """
     Purpose:
@@ -419,11 +536,11 @@ def interactive_plot(df,pathtofits,clusterLabels):
     else:
         labels = clusterLabels
 
-    colorVal = colors_for_plot(labels,cmap='color_blind')
+    colorVal = colors_for_plot(labels)
 
-    data_out = df[labels!=0]
+    data_out = df[labels==-1]
     files_out = data_out.index
-    data_cluster = df[labels==0]
+    data_cluster = df[labels!=-1]
     files_cluster = data_cluster.index
     
     data = np.array(df.iloc[:,[0,1]])
@@ -455,6 +572,41 @@ def interactive_plot(df,pathtofits,clusterLabels):
         ax2 = fig.add_subplot(gs[1,:])
         # empty subplot for center detail
         ax3 = fig.add_subplot(gs[0,67:])
+    @cuda.jit
+    def distance_cuda(dx,dy,dd):
+        bx = cuda.blockIdx.x # block in the grid
+        bw = cuda.blockDim.x # size of a block
+        tx = cuda.threadIdx.x # unique thread ID within a block
+        i = tx + bx * bw
+        if i>len(dd):
+            return
+        
+        # d_ph is a distance placeholder
+        d_ph = (dx[i]-dx[0])**2+(dy[i]-dy[0])**2
+        dd[i]=d_ph**.5
+        return
+    
+    def distances(pts,ex,ey):
+        # Calculates distances between N points
+        pts = np.array(pts)
+        N=len(pts)
+        # Allocate host memory arrays
+        # Transpose pts array to n_dims x n_pts, each index of x contains all of a dimensions coordinates
+        XT = np.transpose(pts)
+        x = np.array(XT[0])
+        x = np.insert(x,0,ex)
+        y = np.array(XT[1])
+        y = np.insert(y,0,ey)
+        d = np.zeros(N)
+        # Allocate and copy GPU/device memory
+        d_x = cuda.to_device(x)
+        d_y = cuda.to_device(y)
+        d_d = cuda.to_device(d)
+        threads_per_block = 128
+        number_of_blocks =int(N/128)+1 
+        distance_cuda [number_of_blocks, threads_per_block](d_x,d_y,d_d)
+        d_d.copy_to_host(d)
+        return d[1:]   
     
     def calcClosestDatapoint(X, event):
         """Calculate which data point is closest to the mouse position.
@@ -465,17 +617,28 @@ def interactive_plot(df,pathtofits,clusterLabels):
             smallestIndex (int) - the index (into the array of points X) of the element closest to the mouse position
         """
         ex,ey = ax.transData.inverted().transform((event.x,event.y))
-        X = np.array(X)
-        x = X.T[0]
-        y = X.T[1]
-        d = ((x-ex)**2+(y-ey)**2)**.5
-        return np.argmin(d)
-    
+        
+        #distances = [distance (XT[:,i], event) for i in range(XT.shape[1])]
+        Ds = distances(X,ex,ey)
+        return np.argmin(Ds)
     def drawData(index):
         # Plots the lightcurve of the point chosen
         ax2.cla()
-        f = pathtofits+df.index[index]
-        t,nf,err=read_kepler_curve(f)
+        ### for fits files saved locally
+        #f = pathtofits+df.index[index]
+        #t,nf,err=read_kepler_curve(f)
+                
+        ### for fits files that need downloaded
+        f = df.index[index] # full file name ****-****_llc.fits
+        obj_id = f[:13] # observation id kplr********
+        keplerObs = Observations.query_criteria(target_name=obj_id, obs_collection='Kepler')
+        keplerProds = Observations.get_product_list(keplerObs)
+        yourProd = Observations.filter_products(keplerProds, extension=f)
+        manifest = Observations.download_products(yourProd)
+        filename = manifest[0][0]            
+        t,nf,err = qt.read_kepler_curve(filename)
+        shutil.rmtree('./mastDownload') # removing the downloaded data
+        
         x=t
         y=nf
         axrange=0.55*(max(y)-min(y))
@@ -499,7 +662,6 @@ def interactive_plot(df,pathtofits,clusterLabels):
         ax2.set_ylabel(r'$\frac{\Delta F}{F}$',fontsize=30)
         fig.suptitle(files[index][:13],fontsize=30)
         canvas.draw()
-        
     def annotatePt(XT, index):
         """Create popover label in 3d chart
         Args:
@@ -554,12 +716,10 @@ def interactive_plot(df,pathtofits,clusterLabels):
         ax.set_xlabel("Reduced X",fontsize=18)
         ax.set_ylabel("Reduced Y",fontsize=18)
         # Scatter the data
-        ax.scatter(outX, outY,c=colorVal[labels!=0],s=30,alpha=.5)
-        sns.kdeplot(clusterX,clusterY,shade=False,ax=ax,cmap="viridis",shade_lowest=False)
-        #ax.hexbin(clusterX,clusterY,mincnt=5,bins="log",cmap="viridis",gridsize=35)
-        hb = sns.kdeplot(clusterX,clusterY,shade=False,ax=ax3,cmap="viridis",shade_lowest=False)
-
-        #cb = fig.colorbar(hb)
+        ax.scatter(outX, outY,c="red",s=30,alpha=.5)
+        ax.hexbin(clusterX,clusterY,mincnt=5,bins="log",cmap="viridis",gridsize=35)
+        hb = ax3.hexbin(clusterX,clusterY,mincnt=5,bins="log",cmap="viridis",gridsize=35)
+        cb = fig.colorbar(hb)
         """
         ax.scatter(clusterX,clusterY,s=30,c='b')
         ax3.scatter(clusterX,clusterY)
@@ -592,6 +752,15 @@ def interactive_plot(df,pathtofits,clusterLabels):
 ###########################################################
 ### Class and methods for the weirdness profile/dossier ###
 ###########################################################
+catalogs = {'koi_full':['./Variable Lists/list_koi_full.txt',',',2],
+            'koi_confirmed':['./Variable Lists/list_koi_confirmed.txt',',',2],
+            'koi_candidate':['./Variable Lists/list_koi_candidate.txt',',',2],
+            'koi_fp':['./Variable Lists/list_koi_fp.txt',',',2],
+            'EB':['./Variable Lists/list_EBs.csv',',',0],
+            'HB':['./Variable Lists/list_kepler_heartbeats.txt',None,37],
+            'flares':['./Variable Lists/kepler_solar_flares.txt',None,22],
+            'no_signal':['./Variable Lists/list_kepler_nosig.txt',None,28],
+            'periodic':['./Variable Lists/list_kepler_MSperiods.txt',None,32]}
 
 class weirdnessProfile(object):
     def __init__(self,
@@ -683,7 +852,12 @@ class weirdnessProfile(object):
             ax.scatter(self.analysis_data[Q].pca_x,self.analysis_data[Q].pca_y)
             
     def catalogCheck(self):
-        # Checks the available catalogs to see if the object is contained in them
+        """
+        Checks the available catalogs to see if the object is contained in them
+        
+        These catalogs are hardcoded in and based on lists compiled from various sources
+        This isn't great practice, but these methods are created for a specific purpose,
+        """
         in_catalogs = []
         ctlg_sampler = {}
         # Catalogs of individual classes are looped through here
@@ -695,14 +869,14 @@ class weirdnessProfile(object):
                 ctlg_sampler[ctlg] = make_sampler(ctlg_list)
                 
         # Debosscher and SIMBAD have a bunch of different classifications, each need parsed out
-        lines = np.genfromtxt('kepler_variable_classes.txt',dtype=str,skip_header=50)
+        lines = np.genfromtxt('./Variable Lists/kepler_variable_classes.txt',dtype=str,skip_header=50)
         Debosscher_full_df = pd.DataFrame(data=lines[:,4],columns=["Class"],index=lines[:,0])
         if Debosscher_full_df.index.str.contains(self.KIC).any():
             deb_class = Debosscher_full_df.loc[self.KIC,'Class']
             ctlg_sampler['Deb_Class_%s'%deb_class]=make_sampler(Debosscher_full_df[Debosscher_full_df.Class==deb_class].index)
             in_catalogs.append('Deb_Class_%s'%deb_class)
             
-        lines = np.genfromtxt('simbad.csv',delimiter=';',skip_header=7,dtype=str)[:,1:]
+        lines = np.genfromtxt('./Variable Lists/simbad.csv',delimiter=';',skip_header=7,dtype=str)[:,1:]
         simbad_full_df = pd.DataFrame(data=lines[:,1],columns=["Class"],index=lines[:,0])
         if simbad_full_df.index.str.contains(self.KIC).any():
             sim_class = simbad_full_df.loc[simbad_full_df.index.str.contains(self.KIC),'Class'][0]
