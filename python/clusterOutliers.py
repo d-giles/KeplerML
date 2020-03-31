@@ -4,6 +4,13 @@ import keplerml
 import km_outliers
 import db_outliers
 import quarterTools as qt
+from bokeh.plotting import figure
+
+from bokeh.layouts import row,gridplot,column
+from bokeh.models import ColumnDataSource
+from bokeh.models.widgets import Button
+from bokeh.events import Tap
+from lightkurve import search_lightcurvefile
 
 def import_gen(filedir="/home/dgiles/Documents/KeplerLCs/output/",suffix="_output.p",fitsdir="/home/dgiles/Documents/KeplerLCs/fitsFiles/",out_file_ext='.coo'):
     """
@@ -145,3 +152,71 @@ class clusterOutliers(object):
             pathtofits = self.fitsDir
             
         qt.interactive_plot(data,pathtofits,clusterLabels)
+        
+    def interactive_viz(self,Quarter,reduction):
+        data = self.data
+
+        
+        red=self.reductions[reduction]
+        x = red.iloc[:,0]
+        y = red.iloc[:,1]
+        files = self.data.index
+        labels = np.array(['KIC '+str(int(lc[4:13])) for lc in files])
+        
+        ##### Bokeh Setup #####
+        # Tools to use
+        TOOLS="pan,wheel_zoom,reset,tap,box_select,poly_select"
+        # Bokeh data
+        # create a column data source for the plots to share
+        s1 = ColumnDataSource(data={
+            'x'     : x,
+            'y'     : y,
+            'desc'  : labels,
+            'files' : files
+        }) 
+
+        s2=ColumnDataSource(data={
+            't'  : [],
+            'nf' : []
+        })
+
+        # Set up widgets
+        button = Button(label='Plot Selected')
+        # Set up callbacks
+        def update_plot():
+            try:
+                inds = [s1.selected.indices[0]] # plotting multiple light curves is not supported at this time
+            except:
+                inds = [0] # if no point is selected, default behavior
+            lcs = list(s1.data['desc'][inds])
+            for i,ind in enumerate(inds): # framework to plot multiple lightcurves, not yet implemented
+                lc = lcs[i]
+
+                # download Kepler lighcurve via Lightkurve
+                lcf = search_lightcurvefile(lc, mission="Kepler", quarter=Quarter).download()
+                # use the normalized PDCSAP flux 
+                nlc = lcf.PDCSAP_FLUX.normalize()
+                t = nlc.time
+                nf = nlc.flux
+
+                s2.data = {'t':t,'nf':nf}
+                plc.line('t','nf',source=s2)
+
+        button.on_click(update_plot)
+
+        # Set up layouts and add to document
+        inputs = column(button)
+
+        # create a new plot and add a renderer
+        left = figure(tools=TOOLS, plot_width=1000, plot_height=600, title=None)
+        left.circle('x', 'y', source=s1)
+        left.on_event(Tap,update_plot)
+        # Planning to incorporate a detailed view of the cluster center on a right plot in the future
+        # create a plot for the light curve and add a line renderer
+        plc = figure(tools=TOOLS,plot_width=1000,plot_height=200,title=None)
+        plc.line('t','nf',source=s2)
+        update_plot()
+
+        #p = gridplot([[left,right]]) #future planning for multiple reductions
+        layout = column(inputs,left, plc)
+        return layout

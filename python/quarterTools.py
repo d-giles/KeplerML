@@ -62,7 +62,6 @@ def get_kepler_lcs(filenames):
     returns:
         paths_to_files - list containing the full paths to downloaded lightcurves.
     """
-    filenames = list(tmp.index[:n])
     obj_ids = [i[:13] for i in filenames]
     keplerObs = Observations.query_criteria(target_name=obj_ids, obs_collection='Kepler')
     keplerProds = Observations.get_product_list(keplerObs)
@@ -77,8 +76,8 @@ def get_kepler_lcs(filenames):
     """
     manifest = manifest.to_pandas(index='Local Path')
     paths_to_files = []
-    for i,f in enumerate(filenames): # forcing the order to match most to least outlying
-        f_sampler = qt.make_sampler([f]) # to find the right file from manifest
+    for i,f in enumerate(filenames): # forcing the order to match given filenames list
+        f_sampler = make_sampler([f]) # to find the right file from manifest
         filename = f_sampler(manifest).index[0] # full local filepath
         paths_to_files.append(filename)
         
