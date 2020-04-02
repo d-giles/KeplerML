@@ -1,10 +1,8 @@
 import matplotlib
-matplotlib.use('TkAgg')
 import sys
 from IPython.display import display
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib import colors
 import matplotlib.cm as cmx
 import matplotlib.gridspec as gridspec
