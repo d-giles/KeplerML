@@ -9,8 +9,8 @@ from bokeh.events import Tap
 from bokeh.palettes import Category10
 
 gui_df = pd.read_csv('gui_df.csv')
-
 s1 = ColumnDataSource(gui_df)
+
 def update_colors(attrname, old, new):
     """ 
     Bokeh was being uncooperative with it's color mapper combined with the selection tool.
