@@ -76,6 +76,26 @@ def make_sampler(inds=['8462852']):
     """
     return lambda df: df[df.index.str.contains('|'.join(inds))]
 
+def import_generator(suffix='_FullSample.csv',
+                     filepath="/home/dgiles/Documents/KeplerLCs/output/",
+                     fits_files_directory="/home/dgiles/Documents/KeplerLCs/fitsFiles/"):
+    """
+    Enables simpler import of multiple quarters of data contained 
+        in the same location with the same suffixes.
+    Args:
+        suffix (str) - the suffix of the file to be imported
+        filepath (optional, str) - filepath to the file to be imported
+        fits_files_directory (optional, str) - path to the directory containing the fits files
+    Returns:
+        lambda function that with single str input of the prefix, typically a Q#.
+    
+    Requirements: 
+    import sys
+    sys.path.append('python')
+    from clusterOutliers import clusterOutliers as coo
+    """
+    return lambda QN: coo(filepath+QN+suffix,fits_files_directory+QN+"fitsfiles")
+
 #####################################
 ### Functions for data processing ###
 #####################################
