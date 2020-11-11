@@ -60,8 +60,7 @@ def kinship_scores(data,d2s=None,kmin=4,kmax=None,samp_size=-1,n_iter=1):
         kmin (integer) - Minimum neighbor, the distance to which is analagous to the score
         kmax (integer, optional) - Maximum neighbor, if used, to find distance to and to average scores over
         n_iter (integer) - Number of iterations, 
-            ***Idea: if None, will loop until scores converge (not implemented)***
-            
+             
     Returns:
         scores (Numpy array) - MinMax scaled scores for data in d2s for all neighbors 
         between kmin and kmax, as well as the average score over the distances from kmin to kmax.
@@ -90,5 +89,10 @@ def kinship_scores(data,d2s=None,kmin=4,kmax=None,samp_size=-1,n_iter=1):
             if samp_size>1:
                 ref_data_sample = data.sample(n=samp_size)
             scores_i += dist_scores(ref_data_sample,d2s=data,kmin=kmin,kmax=kmax)
+    else:
+        scores_i = dist_scores(ref_data_sample,d2s=data,kmin=kmin,kmax=kmax)
+        n_iter = 1
+        """***Idea: if n_iter = None or 0 or -1, loop until scores converge (not implemented)***"""
+        pass
     scores = scores_i/n_iter
     return scores
