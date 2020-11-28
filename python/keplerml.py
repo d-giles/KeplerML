@@ -17,9 +17,7 @@ tmpfile = ''
 
 
 def fl_files(fl):
-    """
-    Returns an array with the files in the given filelist
-    """
+    """Return an array with the files in the given filelist."""
     with open(fl, 'r') as file:
         files = file.readlines()
     return files
@@ -27,7 +25,7 @@ def fl_files(fl):
 
 def fl_files_w_path(fl, fitsDir='./fitsFiles/', fl_as_array=False):
     """
-    Returns an array with the files to be processed
+    Return an array with the files to be processed
     in the given filelist with the given path.
 
     If filelist given as array, it is assumed that the entire array
@@ -92,7 +90,8 @@ def read_kepler_curve(file):
 
 
 def recover(fl, temp_file, fl_as_array=False):
-    """
+    """Recover from a crash.
+
     Purpose:
         In the event that processing lightcurves fails in the middle,
         this will read in the failsafe tmp file, evaluate which files were
